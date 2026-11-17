@@ -1,0 +1,16 @@
+# id,name,category,price
+1,Laptop,Electronics,55000
+2,Wireless Mouse,Accessories,799
+3,Mechanical Keyboard,Accessories,2499
+4,USB-C Hub,Accessories,1299
+5,Laptop Backpack,Bags,1899
+6,27-inch Monitor,Electronics,14999
+7,Webcam,Electronics,2199
+8,Noise Cancelling Headphones,Electronics,6999
+9,Smartphone,Electronics,24999
+10,Phone Case,Accessories,399
+11,Fast Charger,Accessories,999
+12,Wireless Earbuds,Electronics,3499
+13,Desk Lamp,Furniture,1199
+14,Ergonomic Chair,Furniture,8999
+15,Laptop Stand,Accessories,1099
