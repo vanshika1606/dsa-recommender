@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Product Recommendation System</title>
+<style>
+:root { --bg:#f5f6f8; --card:#fff; --text:#1c1f26; --muted:#6b7280; --line:#e3e6eb; --accent:#2563eb; --sel:#f59e0b; --hit:#10b981; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#0f1115; --card:#171a21; --text:#e8eaed; --muted:#9097a4; --line:#2a2f3a; --accent:#60a5fa; }
+}
+* { box-sizing:border-box; }
+body { margin:0; font-family:"Segoe UI",system-ui,sans-serif; background:var(--bg); color:var(--text); }
+header { padding:22px 28px 6px; }
+header h1 { margin:0; font-size:1.4rem; }
+header p { margin:4px 0 0; color:var(--muted); font-size:.9rem; }
+main { max-width:1200px; margin:0 auto; padding:16px 28px 48px; display:grid; gap:18px; grid-template-columns:minmax(300px,420px) 1fr; }
+@media (max-width:860px) { main { grid-template-columns:1fr; } }
+.card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px; }
+.card h2 { margin:0 0 10px; font-size:1rem; }
+label { font-size:.8rem; color:var(--muted); display:block; margin-bottom:4px; }
+select, input { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--text); font-size:.9rem; }
+.tabs { display:flex; gap:6px; margin:12px 0; }
+.tabs button { flex:1; padding:8px; border:1px solid var(--line); background:var(--bg); color:var(--text); border-radius:8px; cursor:pointer; font-size:.85rem; }
+.tabs button.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+.note { font-size:.78rem; color:var(--muted); margin:0 0 10px; }
+.item { display:flex; justify-content:space-between; gap:10px; padding:9px 10px; border:1px solid var(--line); border-radius:8px; margin-bottom:6px; cursor:pointer; }
+.item:hover { border-color:var(--accent); }
+.item b { font-size:.9rem; font-weight:600; }
+.item small { display:block; color:var(--muted); font-size:.75rem; }
+.tag { font-size:.75rem; color:var(--accent); white-space:nowrap; align-self:center; }
+.empty { color:var(--muted); font-size:.85rem; }
+.right { display:grid; gap:18px; align-content:start; }
+svg { width:100%; height:auto; display:block; }
+.legend { display:flex; gap:14px; font-size:.78rem; color:var(--muted); margin-top:8px; flex-wrap:wrap; }
+.dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:5px; }
+.forms { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; }
+form { display:grid; gap:8px; }
+form button { padding:9px; border:0; border-radius:8px; background:var(--accent); color:#fff; font-weight:600; cursor:pointer; }
+#msg { font-size:.85rem; color:var(--muted); min-height:1.2em; margin-top:10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>E-commerce Product Recommendation System</h1>
+  <p>Graph with BFS, recursive DFS, Dijkstra and trending products. Same logic as the C++ project, running in the browser.</p>
+</header>
+
+<main>
+  <section class="card">
+    <h2>Recommendations</h2>
+    <label for="pick">Product being viewed</label>
+    <select id="pick"></select>
+    <div class="tabs">
+      <button data-mode="bfs" class="on">BFS</button>
+      <button data-mode="dfs">DFS</button>
+      <button data-mode="dij">Dijkstra</button>
+    </div>
+    <p class="note" id="note"></p>
+    <div id="results"></div>
+  </section>
+
+  <div class="right">
+    <section class="card">
+      <h2>Product graph <span style="font-weight:400;color:var(--muted);font-size:.8rem">(click a node to select it)</span></h2>
+      <svg id="graph" viewBox="0 0 700 640"></svg>
+      <div class="legend">
+        <span><i class="dot" style="background:var(--sel)"></i>Selected</span>
+        <span><i class="dot" style="background:var(--hit)"></i>Recommended</span>
+        <span><i class="dot" style="background:#9aa3b2"></i>Other</span>
+        <span>Line thickness = link strength</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Trending products <span style="font-weight:400;color:var(--muted);font-size:.8rem">(most connections)</span></h2>
+      <div id="trend"></div>
+    </section>
+
+    <section class="card">
+      <h2>Add data</h2>
+      <div class="forms">
+        <form id="fp">
+          <input name="id" type="number" placeholder="New product ID" required>
+          <input name="name" placeholder="Name" required>
+          <input name="cat" placeholder="Category" required>
+          <input name="price" type="number" step="0.01" placeholder="Price" required>
+          <button>Add product</button>
+        </form>
+        <form id="fe">
+          <input name="a" type="number" placeholder="First product ID" required>
+          <input name="b" type="number" placeholder="Second product ID" required>
+          <input name="w" type="number" placeholder="Link strength (1-10)" required>
+          <button>Add connection</button>
+        </form>
+      </div>
+      <div id="msg"></div>
+    </section>
+  </div>
+</main>
+
+<script>
+// ==ALGO-START==
+const products = new Map();
+const adj = new Map();
+
+function addProduct(p) {
+  if (products.has(p.id)) return false;
+  products.set(p.id, p);
+  adj.set(p.id, []);
+  return true;
+}
+
+function addEdge(a, b, w) {
+  if (a === b || !products.has(a) || !products.has(b) || w < 1 || w > 10) return false;
+  if (adj.get(a).some(e => e.to === b)) return false;
+  adj.get(a).push({ to: b, w });
+  adj.get(b).push({ to: a, w });
+  return true;
+}
+
+function bfs(start, max = 5) {
+  const result = [];
+  if (!products.has(start)) return result;
+  const seen = new Set([start]);
+  const queue = [start];
+  let head = 0;
+  while (head < queue.length && result.length < max) {
+    const cur = queue[head++];
+    for (const e of adj.get(cur)) {
+      if (!seen.has(e.to)) {
+        seen.add(e.to);
+        result.push(e.to);
+        queue.push(e.to);
+        if (result.length >= max) break;
+      }
+    }
+  }
+  return result;
+}
+
+function dfsHelper(cur, depth, limit, max, seen, result) {
+  if (depth > limit) return;
+  for (const e of adj.get(cur)) {
+    if (result.length >= max) return;
+    if (!seen.has(e.to)) {
+      seen.add(e.to);
+      result.push(e.to);
+      dfsHelper(e.to, depth + 1, limit, max, seen, result);
+    }
+  }
+}
+
+function dfs(start, limit = 3, max = 5) {
+  const result = [];
+  if (!products.has(start)) return result;
+  dfsHelper(start, 1, limit, max, new Set([start]), result);
+  return result;
+}
+
+class MinHeap {
+  constructor() { this.a = []; }
+  less(x, y) { return x[0] < y[0] || (x[0] === y[0] && x[1] < y[1]); }
+  push(v) {
+    const a = this.a; a.push(v);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]]; i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      while (true) {
+        let l = 2 * i + 1, r = l + 1, m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]]; i = m;
+      }
+    }
+    return top;
+  }
+  get size() { return this.a.length; }
+}
+
+function dijkstra(start, max = 5) {
+  if (!products.has(start)) return [];
+  const dist = new Map();
+  for (const id of products.keys()) dist.set(id, Infinity);
+  dist.set(start, 0);
+  const heap = new MinHeap();
+  heap.push([0, start]);
+  while (heap.size) {
+    const [d, u] = heap.pop();
+    if (d > dist.get(u)) continue;
+    for (const e of adj.get(u)) {
+      const cost = 11 - e.w;
+      if (d + cost < dist.get(e.to)) {
+        dist.set(e.to, d + cost);
+        heap.push([d + cost, e.to]);
+      }
+    }
+  }
+  const out = [];
+  for (const [id, d] of dist) if (id !== start && d !== Infinity) out.push([id, d]);
+  out.sort((x, y) => x[1] - y[1] || x[0] - y[0]);
+  return out.slice(0, max);
+}
+
+function trending(n = 5) {
+  return [...adj].map(([id, list]) => [id, list.length])
+    .sort((x, y) => y[1] - x[1] || x[0] - y[0]).slice(0, n);
+}
+// ==ALGO-END==
+
+const sampleProducts = [
+  [1,"Laptop","Electronics",55000],[2,"Wireless Mouse","Accessories",799],
+  [3,"Mechanical Keyboard","Accessories",2499],[4,"USB-C Hub","Accessories",1299],
+  [5,"Laptop Backpack","Bags",1899],[6,"27-inch Monitor","Electronics",14999],
+  [7,"Webcam","Electronics",2199],[8,"Noise Cancelling Headphones","Electronics",6999],
+  [9,"Smartphone","Electronics",24999],[10,"Phone Case","Accessories",399],
+  [11,"Fast Charger","Accessories",999],[12,"Wireless Earbuds","Electronics",3499],
+  [13,"Desk Lamp","Furniture",1199],[14,"Ergonomic Chair","Furniture",8999],
+  [15,"Laptop Stand","Accessories",1099]
+];
+const sampleEdges = [
+  [1,2,8],[1,3,7],[1,4,6],[1,5,9],[1,6,7],[1,7,5],[1,8,4],[1,14,3],[1,15,8],
+  [2,3,6],[3,4,4],[4,15,5],[5,15,4],[6,7,5],[8,12,5],[9,10,10],[9,11,9],[9,12,8],
+  [10,11,6],[13,14,7]
+];
+sampleProducts.forEach(([id, name, cat, price]) => addProduct({ id, name, cat, price }));
+sampleEdges.forEach(([a, b, w]) => addEdge(a, b, w));
+
+let selected = 1;
+let mode = "bfs";
+const $ = (id) => document.getElementById(id);
+const money = (n) => "Rs. " + Number(n).toLocaleString("en-IN");
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+const notes = {
+  bfs: "Customers who bought this also bought. BFS visits the closest products first, using a queue.",
+  dfs: "A related chain to explore. Recursive DFS goes deep along one path first (depth limit 3).",
+  dij: "Strongest overall match. Dijkstra on cost = 11 - strength, so lower cost means a stronger match, even through middle products."
+};
+
+function itemHtml(id, tag) {
+  const p = products.get(id);
+  return `<div class="item" data-id="${id}"><div><b>${esc(p.name)}</b><small>${esc(p.cat)} | ${money(p.price)}</small></div>${tag ? `<span class="tag">${tag}</span>` : ""}</div>`;
+}
+
+function getResults() {
+  if (mode === "bfs") return bfs(selected).map((id) => [id, ""]);
+  if (mode === "dfs") return dfs(selected).map((id) => [id, ""]);
+  return dijkstra(selected).map(([id, d]) => [id, "cost " + d]);
+}
+
+function render() {
+  const pick = $("pick");
+  pick.innerHTML = [...products.values()].sort((a, b) => a.id - b.id)
+    .map((p) => `<option value="${p.id}">${p.id} - ${esc(p.name)}</option>`).join("");
+  pick.value = selected;
+
+  document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.mode === mode));
+  $("note").textContent = notes[mode];
+
+  const results = getResults();
+  $("results").innerHTML = results.length
+    ? results.map(([id, tag]) => itemHtml(id, tag)).join("")
+    : '<p class="empty">No related products found.</p>';
+
+  $("trend").innerHTML = trending().map(([id, n]) => itemHtml(id, n + " connections")).join("");
+
+  drawGraph(new Set(results.map(([id]) => id)));
+  document.querySelectorAll(".item").forEach((el) => {
+    el.onclick = () => { selected = Number(el.dataset.id); render(); };
+  });
+}
+
+function drawGraph(hits) {
+  const ids = [...products.keys()].sort((a, b) => a - b);
+  const pos = new Map();
+  ids.forEach((id, i) => {
+    const ang = (2 * Math.PI * i) / ids.length - Math.PI / 2;
+    pos.set(id, { x: 350 + 230 * Math.cos(ang), y: 320 + 230 * Math.sin(ang), ang });
+  });
+
+  let svg = "";
+  for (const [a, list] of adj) {
+    for (const e of list) {
+      if (a < e.to) {
+        const p = pos.get(a), q = pos.get(e.to);
+        const on = (a === selected && hits.has(e.to)) || (e.to === selected && hits.has(a));
+        svg += `<line x1="${p.x}" y1="${p.y}" x2="${q.x}" y2="${q.y}" stroke="${on ? "#10b981" : "#9aa3b2"}" stroke-opacity="${on ? 0.9 : 0.35}" stroke-width="${0.6 + e.w * 0.35}"/>`;
+      }
+    }
+  }
+  for (const id of ids) {
+    const p = pos.get(id), prod = products.get(id);
+    const fill = id === selected ? "#f59e0b" : hits.has(id) ? "#10b981" : "#9aa3b2";
+    const lx = 350 + 262 * Math.cos(p.ang), ly = 320 + 262 * Math.sin(p.ang);
+    const anchor = Math.cos(p.ang) > 0.25 ? "start" : Math.cos(p.ang) < -0.25 ? "end" : "middle";
+    svg += `<g data-id="${id}" style="cursor:pointer"><title>${esc(prod.name)}</title>
+      <circle cx="${p.x}" cy="${p.y}" r="17" fill="${fill}"/>
+      <text x="${p.x}" y="${p.y + 4}" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">${id}</text>
+      <text x="${lx}" y="${ly + 4}" text-anchor="${anchor}" font-size="12" fill="currentColor">${esc(prod.name.split(" ").slice(0, 2).join(" "))}</text></g>`;
+  }
+  $("graph").innerHTML = svg;
+  $("graph").querySelectorAll("g").forEach((g) => {
+    g.onclick = () => { selected = Number(g.dataset.id); render(); };
+  });
+}
+
+function say(text) { $("msg").textContent = text; }
+
+$("pick").onchange = (e) => { selected = Number(e.target.value); render(); };
+document.querySelectorAll(".tabs button").forEach((b) => { b.onclick = () => { mode = b.dataset.mode; render(); }; });
+
+$("fp").onsubmit = (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const id = Number(f.get("id")), price = Number(f.get("price"));
+  const name = String(f.get("name")).trim(), cat = String(f.get("cat")).trim();
+  if (id <= 0) return say("ID must be a positive number.");
+  if (products.has(id)) return say("A product with ID " + id + " already exists.");
+  if (!name || !cat) return say("Name and category cannot be empty.");
+  if (price < 0) return say("Price cannot be negative.");
+  addProduct({ id, name, cat, price });
+  e.target.reset();
+  say("Product added.");
+  render();
+};
+
+$("fe").onsubmit = (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const a = Number(f.get("a")), b = Number(f.get("b")), w = Number(f.get("w"));
+  if (a === b) return say("A product cannot be connected to itself.");
+  if (!products.has(a) || !products.has(b)) return say("One or both product IDs do not exist.");
+  if (!Number.isInteger(w) || w < 1 || w > 10) return say("Strength must be a whole number from 1 to 10.");
+  if (!addEdge(a, b, w)) return say("These products are already connected.");
+  e.target.reset();
+  say("Connection added.");
+  render();
+};
+
+render();
+</script>
+</body>
+</html>
